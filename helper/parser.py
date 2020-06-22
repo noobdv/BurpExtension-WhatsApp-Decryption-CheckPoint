@@ -1,9 +1,11 @@
+import sys
+
 from Crypto.Cipher import AES
 from google.protobuf import json_format
 
-from .libs.whatsapp_pb2 import WebMessageInfo
-from .libs.whatsapp_read import WhatsAppReader
-from .libs.whatsapp_write import WhatsAppWriter
+from libs.whatsapp_pb2 import WebMessageInfo
+from libs.whatsapp_read import WhatsAppReader
+from libs.whatsapp_write import WhatsAppWriter
 
 import os
 import base64
@@ -13,8 +15,6 @@ import hmac
 import curve25519
 import socket
 import ast
-
-
 
 
 def hmac_sha256(key, sign):
@@ -27,7 +27,8 @@ def HKDF(key, length, app_info=""):
     key_block = ""
     block_index = 1
     while len(key_stream) < length:
-        key_block = hmac.new(key, msg=key_block + app_info + chr(block_index), digestmod=hashlib.sha256).digest()
+        key_block = hmac.new(key, msg=key_block + app_info +
+                             chr(block_index), digestmod=hashlib.sha256).digest()
         block_index += 1
         key_stream += key_block
     return key_stream[:length]
@@ -76,22 +77,27 @@ class WhatsAppWebClient(object):
         self.aes_key = None
         self.mac_key = None
 
-        self.private_key = curve25519.Private("".join([chr(x) for x in priv_key_list]))
+        self.private_key = curve25519.Private(
+            "".join([chr(x) for x in priv_key_list]))
         self.public_key = self.private_key.get_public()
 
-        assert (self.public_key.serialize() == "".join([chr(x) for x in pub_key_list]))
+        assert (self.public_key.serialize() ==
+                "".join([chr(x) for x in pub_key_list]))
 
         self.secret = base64.b64decode(ref_dict["secret"])
-        self.shared_secret = self.private_key.get_shared_key(curve25519.Public(self.secret[:32]), lambda key: key)
+        self.shared_secret = self.private_key.get_shared_key(
+            curve25519.Public(self.secret[:32]), lambda key: key)
 
         shared_expended = HKDF(self.shared_secret, 80)
 
-        check_hmac = hmac_sha256(shared_expended[32:64], self.secret[:32] + self.secret[64:])
+        check_hmac = hmac_sha256(
+            shared_expended[32:64], self.secret[:32] + self.secret[64:])
 
         if check_hmac != self.secret[32:64]:
             raise ValueError("Error hmac mismatch")
 
-        keys_decrypted = aes_decrypt(shared_expended[:32], shared_expended[64:] + self.secret[64:])
+        keys_decrypted = aes_decrypt(
+            shared_expended[:32], shared_expended[64:] + self.secret[64:])
 
         self.aes_key = keys_decrypted[:32]
         self.mac_key = keys_decrypted[32:64]
@@ -139,7 +145,7 @@ class WhatsAppWebClient(object):
         enc = aes_encrypt(self.aes_key, whatsapp_data)
         data = hmac_sha256(self.mac_key, enc) + enc
 
-        print (self.message_tag)
+        print(self.message_tag)
         return base64.b64encode("{0},{1}".format(self.message_tag, data))
 
     def decrypt_outgoing_message(self, message):
@@ -175,7 +181,7 @@ class WhatsAppWebClient(object):
 
         # Fix protobuf manually...
         char_diff = len(output) - len(self.original_content)
-        print ("ENCRYPTED DIFF: {}").format(char_diff)
+        print("ENCRYPTED DIFF: {}").format(char_diff)
 
         output[10] += char_diff
         output[17] += char_diff
@@ -195,8 +201,8 @@ error_codes = {
     5: "Can't encrypt the outgoing message, something wrong with the data."
 }
 
-print ("Waiting for connection")
-print ("""
+print("Waiting for connection")
+print("""
 
 Dikla Barda:
     Linkedin - https://www.linkedin.com/in/diklabarda/ 
@@ -210,7 +216,7 @@ Roman Zaikin:
 
 while True:
     data, client = server.recvfrom(4096)
-    print ("connection received from client {0}").format(client)
+    print("connection received from client {0}").format(client)
 
     try:
         data = json.loads(data)
@@ -224,12 +230,14 @@ while True:
         try:
             wb = WhatsAppWebClient(data["data"]["ref"], private, public)
         except Exception as e:
-            server.sendto(json.dumps({"status": 1,"data": error_codes[1]}), client)
+            server.sendto(json.dumps(
+                {"status": 1, "data": error_codes[1]}), client)
         else:
-            server.sendto(json.dumps({"status": 0, "data": error_codes[0]}), client)
+            server.sendto(json.dumps(
+                {"status": 0, "data": error_codes[0]}), client)
 
     elif data["action"] == "tagUpdate":
-        print (data["data"]["msg_tag"])
+        print(data["data"]["msg_tag"])
         wb.update_message_tag(data["data"]["msg_tag"])
 
     elif data["action"] == "decrypt":
@@ -238,46 +246,62 @@ while True:
         if data["data"]["direction"] == "in":
             try:
                 # fix len
-                decrypted_message = wb.decrypt_incoming_message(data["data"]["msg"])
-                print ("DECRYPTED: "), len(str(decrypted_message).replace("u'","'"))
+                decrypted_message = wb.decrypt_incoming_message(
+                    data["data"]["msg"])
+                print("DECRYPTED: "), len(
+                    str(decrypted_message).replace("u'", "'"))
 
             except Exception as e:
-                server.sendto(json.dumps({"status": 2, "data": error_codes[2]}), client)
+                server.sendto(json.dumps(
+                    {"status": 2, "data": error_codes[2]}), client)
             else:
-                server.sendto(json.dumps({"status": 0, "data": decrypted_message}), client)
+                server.sendto(json.dumps(
+                    {"status": 0, "data": decrypted_message}), client)
 
         # decrypt outgoing messages
         elif data["data"]["direction"] == "out":
             try:
-                decrypted_message = wb.decrypt_outgoing_message(ast.literal_eval(data["data"]["msg"]))
+                decrypted_message = wb.decrypt_outgoing_message(
+                    ast.literal_eval(data["data"]["msg"]))
             except Exception as e:
-                server.sendto(json.dumps({"status": 4, "data": error_codes[4]}), client)
+                server.sendto(json.dumps(
+                    {"status": 4, "data": error_codes[4]}), client)
             else:
-                server.sendto(json.dumps({"status": 0, "data": decrypted_message}), client)
+                server.sendto(json.dumps(
+                    {"status": 0, "data": decrypted_message}), client)
 
     elif data["action"] == "encrypt":
 
         # encrypt incoming messages
         if data["data"]["direction"] == "in":
             try:
-                received_unencrypted = ast.literal_eval(data["data"]["msg"].replace("false","False").replace("true","True"))
+                received_unencrypted = ast.literal_eval(
+                    data["data"]["msg"].replace("false", "False").replace("true", "True"))
                 print("ENCRYPTED: "), len(str(received_unencrypted))
 
-                char_diff = len(str(received_unencrypted)) - len(str(decrypted_message).replace("u'","'"))
-                encrypted_message = wb.encrypt_incoming_message(received_unencrypted, char_diff)
+                char_diff = len(str(received_unencrypted)) - \
+                    len(str(decrypted_message).replace("u'", "'"))
+                encrypted_message = wb.encrypt_incoming_message(
+                    received_unencrypted, char_diff)
             except Exception as e:
-                print (e)
-                server.sendto(json.dumps({"status": 3, "data": error_codes[3]}), client)
+                print(e)
+                server.sendto(json.dumps(
+                    {"status": 3, "data": error_codes[3]}), client)
             else:
-                server.sendto(json.dumps({"status": 0, "data": encrypted_message}), client)
+                server.sendto(json.dumps(
+                    {"status": 0, "data": encrypted_message}), client)
 
         # encrypt outgoing messages
         elif data["data"]["direction"] == "out":
             try:
-                received_unencrypted = ast.literal_eval(data["data"]["msg"].replace("false","False").replace("true","True"))
-                encrypted_message = wb.encrypt_out_going(received_unencrypted, 0)
+                received_unencrypted = ast.literal_eval(
+                    data["data"]["msg"].replace("false", "False").replace("true", "True"))
+                encrypted_message = wb.encrypt_out_going(
+                    received_unencrypted, 0)
             except Exception as e:
-                print (e)
-                server.sendto(json.dumps({"status": 5, "data": error_codes[5]}), client)
+                print(e)
+                server.sendto(json.dumps(
+                    {"status": 5, "data": error_codes[5]}), client)
             else:
-                server.sendto(json.dumps({"status": 0, "data": encrypted_message}), client)
+                server.sendto(json.dumps(
+                    {"status": 0, "data": encrypted_message}), client)

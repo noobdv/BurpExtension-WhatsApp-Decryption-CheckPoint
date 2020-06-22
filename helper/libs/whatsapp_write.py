@@ -1,3 +1,8 @@
+import sys
+import protobuf
+
+from pip._internal.resolution.base.
+from pip._internal.operations.build.wheel import 
 from google.protobuf import json_format
 from math import ceil, floor
 from whatsapp_pb2 import WebMessageInfo
